@@ -4363,7 +4363,13 @@ vec3 skyFogColor(vec3 rd){
   return c;
 }
 
-// aerial perspective: exponential height fog + distance haze + a mist layer on the river
+// the veil of falling rain: the sky's own light, greyed and cooled (and lit up by lightning)
+vec3 rainVeilColor(){
+  vec3 c = mix(vec3(dot(uSkyUp, vec3(0.3, 0.5, 0.2))), uSkyUp, 0.4) * vec3(0.95, 1.0, 1.08) * 1.12 * (1.0 - uStorm * 0.35);
+  return c + vec3(0.5, 0.56, 0.72) * uFlash * 0.35;
+}
+// aerial perspective: exponential height fog + distance haze + a mist layer on the river, and in rain the
+// veil of falling water that fills the whole air column
 vec3 applyAtmosphere(vec3 col, vec3 wp){
   vec3 ro = cameraPosition;
   ro.y = abs(ro.y);                 // the mirror pass renders from below the water
@@ -4378,11 +4384,16 @@ vec3 applyAtmosphere(vec3 col, vec3 wp){
   float mn = vnoise(mp) * 0.9 + vnoise(mp * 2.7 + 3.1) * 0.45 - 0.33;
   float mist = uMist * my * my * max(mn + 0.12, 0.0) * min(dist, 240.0) * 0.0065;
   float haze = uFogParams.w * dist;
-  float T = exp(-(fh + haze + mist));
+  // rain: every hundred metres of it hides a little more behind a grey-blue veil, so in a downpour the far
+  // slopes pale and flatten while the near banks keep their colour (a shower less, a storm more)
+  float veil = uRain * (0.00085 + 0.0012 * uStorm) * max(dist - 12.0, 0.0);
+  float T = exp(-(fh + haze + mist + veil));
   vec3 fc = skyFogColor(normalize(vec3(rd.x, max(rd.y, -0.04), rd.z)));
   // the river mist is paler and bluer than the haze, and glows where the sun rakes through it
   vec3 fcm = mix(fc, uFogCool * vec3(1.35, 1.38, 1.4), 0.55) + uSunCol * 0.05 * pow(max(dot(rd, uSunDir), 0.0), 4.0);
-  fc = mix(fc, fcm, clamp(mist / max(fh + haze + mist, 1e-4), 0.0, 1.0));
+  float tot = max(fh + haze + mist + veil, 1e-4);
+  fc = mix(fc, fcm, clamp(mist / tot, 0.0, 1.0));
+  fc = mix(fc, rainVeilColor(), clamp(veil / tot, 0.0, 1.0));
   vec3 outc = col * T + fc * (1.0 - T);
   // the riverbed is seen through the surface, and the water shader hazes it: don't fog it twice
   if (uReflect < 0.5 && wp.y < 0.0) outc = mix(col, outc, smoothstep(-0.35, 0.0, wp.y));
@@ -5121,6 +5132,8 @@ vec3 skyColor(vec3 rd, float withSun){
     disc = smoothstep(0.99955, 0.99972, s);
   }
   col += withSun * discCol * disc * (1.0 - smoothstep(0.15, 0.6, uStorm));
+  // in rain the air low over the horizon is the same grey-blue veil the far slopes fade into
+  col = mix(col, rainVeilColor(), uRain * (0.45 + 0.4 * uStorm) * (1.0 - smoothstep(-0.02, 0.3, h)));
   return col;
 }
 `;function P1(){let s=new Nt({uniforms:{...et},vertexShader:`
